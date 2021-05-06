@@ -95,6 +95,8 @@ This variable has to be customized before `forge' is loaded."
              magit-mode-hook)
   :type '(list :convert-widget custom-hook-convert-widget))
 
+(defvar forge-use-svg-labels t)
+
 (defvar-local forge-display-in-status-buffer t
   "Whether to display topics in the current Magit status buffer.")
 (put 'forge-display-in-status-buffer 'permanent-local t)
@@ -518,21 +520,25 @@ identifier."
 (defun forge--insert-topic-labels (topic &optional skip-separator labels)
   (pcase-dolist (`(,name ,color ,description)
                  (or labels (closql--iref topic 'labels)))
-    (if skip-separator
-        (setq skip-separator nil)
-      (insert " "))
     (let* ((background (forge--sanitize-color color))
            (foreground (forge--contrast-color background)))
-      (insert name)
-      (let ((o (make-overlay (- (point) (length name)) (point))))
-        (overlay-put o 'priority 2)
-        (overlay-put o 'evaporate t)
-        (overlay-put o 'font-lock-face
-                     `(( :background ,background
-                         :foreground ,foreground)
-                       forge-topic-label))
-        (when description
-          (overlay-put o 'help-echo description))))))
+      (if forge-use-svg-labels
+          (insert-image (forge--make-svg-label
+                         name 'forge-topic-label 1 1 6 foreground background)
+                        (concat " " name " "))
+        (if skip-separator
+            (setq skip-separator nil)
+          (insert " "))
+        (insert name)
+        (let ((o (make-overlay (- (point) (length name)) (point))))
+          (overlay-put o 'priority 2)
+          (overlay-put o 'evaporate t)
+          (overlay-put o 'font-lock-face
+                       `(( :background ,background
+                           :foreground ,foreground)
+                         forge-topic-label))
+          (when description
+            (overlay-put o 'help-echo description)))))))
 
 (defvar forge-topic-marks-section-map
   (let ((map (make-sparse-keymap)))
@@ -588,6 +594,66 @@ Return a value between 0 and 1."
   "Calculate the luminance of color composed of RED, GREEN and BLUE.
 Return a value between 0 and 1."
   (/ (+ (* .2126 red) (* .7152 green) (* .0722 blue)) 256))
+
+(defun forge--make-svg-label ( text face padding margin radius
+                               &optional foreground background)
+  (require (quote svg))
+  (let* ((foreground  (or foreground (face-attribute face :foreground nil t)))
+         (background  (or background (face-attribute face :background nil t)))
+         (box         (face-attribute face :box nil t))
+         (box         (if (eq box 'unspecified) nil box))
+         (box-color   (or (plist-get box :color) foreground))
+         (box-width   (plist-get box :line-width))
+         (box-width   (/ (abs (cond ((consp box-width) (car box-width))
+                                    (box-width)
+                                    (t 1)))
+                         2.0))
+         (font-family (face-attribute face :family nil 'default))
+         (font-weight (alist-get (face-attribute face :weight nil 'default)
+                                 '((thin       . 100)
+                                   (ultralight . 200)
+                                   (light      . 300)
+                                   (regular    . 400)
+                                   (medium     . 500)
+                                   (semibold   . 600)
+                                   (bold       . 700)
+                                   (extrabold  . 800)
+                                   (black      . 900))))
+         (txt-width   (window-font-width))
+         (svg-width   (* txt-width (+ (length text) padding margin)))
+         (tag-width   (* txt-width (+ (length text) padding)))
+         (tag-x       (* txt-width (/ margin 2.0)))
+         (text-x      (+ tag-x
+                         (/ (- tag-width (* (length text) txt-width))
+                            2)))
+         (font-size   (* (ceiling
+                          (* (face-attribute face :height nil 'default)
+                             0.1))
+                         (image-compute-scaling-factor 'auto)))
+         (txt-height  (window-font-height))
+         (svg-height  txt-height)
+         (tag-height  (- txt-height 2))
+         (text-y      font-size)
+         (svg         (svg-create svg-width svg-height)))
+    (svg-rectangle svg tag-x 0 tag-width tag-height
+                   :fill (if box box-color background)
+                   :rx   radius)
+    (when box
+      (svg-rectangle svg
+                     (+ tag-x         box-width)
+                     (+ 0             box-width)
+                     (- tag-width  (* box-width 2))
+                     (- tag-height (* box-width 2))
+                     :fill background
+                     :rx   (- radius box-width)))
+    (svg-text svg text
+              :font-family font-family
+              :font-weight font-weight
+              :font-size   font-size
+              :fill        foreground
+              :x           text-x
+              :y           text-y)
+    (svg-image svg :scale 1 :ascent 'center)))
 
 (cl-defun forge-insert-topic-refs
     (&optional (topic forge-buffer-topic))
