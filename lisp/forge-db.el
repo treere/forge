@@ -26,7 +26,9 @@
 (require 'closql)
 (require 'eieio)
 (require 'emacsql)
-(require 'emacsql-sqlite)
+(or (require 'emacsql-sqlite nil t)
+    (require 'emacsql-psql nil t)
+    (error "Forge requires one of `emacsql-sqlite' or `emacsql-psql'"))
 
 (defvar forge--db-table-schemata)
 
@@ -45,14 +47,24 @@ connectors you must install the respective package explicitly."
   :group 'forge
   :type '(choice (const sqlite)
                  (const libsqlite3)
+                 (const psql)
                  (symbol :tag "other")))
 
 (defcustom forge-database-file
   (expand-file-name "forge-database.sqlite"  user-emacs-directory)
-  "The file used to store the forge database."
+  "The file used to store Forge's SQLite database."
   :package-version '(forge . "0.1.0")
   :group 'forge
   :type 'file)
+
+(defcustom forge-database-psql-args '("forge2" nil nil nil) ;TEMP
+  "The arguments used to connect to Forge's PostgreSQL database."
+  :package-version '(forge . "0.3.0")
+  :group 'forge
+  :type '(list (string :tag "database")
+               (choice :tag "username" (const :tag "unspecified" nil) string)
+               (choice :tag "hostname" (const :tag "unspecified" nil) string)
+               (choice :tag "port"     (const :tag "unspecified" nil) string)))
 
 ;;; Core
 
@@ -64,6 +76,11 @@ connectors you must install the respective package explicitly."
    (require (quote emacsql-libsqlite3))
    (with-no-warnings
      (defclass forge-database (emacsql-libsqlite3-connection closql-database)
+       ((object-class :initform 'forge-repository)))))
+  (psql
+   (require (quote emacsql-psql))
+   (with-no-warnings
+     (defclass forge-database (emacsql-psql-connection closql-database)
        ((object-class :initform 'forge-repository))))))
 
 (defconst forge--db-version 7)
@@ -78,8 +95,13 @@ connectors you must install the respective package explicitly."
 (defun forge-db ()
   (unless (and forge--db-connection (emacsql-live-p forge--db-connection))
     (make-directory (file-name-directory forge-database-file) t)
-    (closql-db 'forge-database 'forge--db-connection
-               forge-database-file t)
+    (cl-case forge-database-connector
+      (psql
+       (apply #'closql-db 'forge-database 'forge--db-connection t
+              forge-database-psql-args))
+      ((sqlite libsqlite3)
+       (closql-db 'forge-database 'forge--db-connection
+                  forge-database-file t)))
     (let* ((db forge--db-connection)
            (version (closql--db-get-version db))
            (version (forge--db-maybe-update forge--db-connection version)))
