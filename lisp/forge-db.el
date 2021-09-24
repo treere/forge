@@ -132,15 +132,15 @@ connectors you must install the respective package explicitly."
       wiki-p
       stars
       watchers
-      (assignees :default eieio-unbound)
-      (forks     :default eieio-unbound)
-      (issues    :default eieio-unbound)
-      (labels    :default eieio-unbound)
-      (revnotes  :default eieio-unbound)
-      (pullreqs  :default eieio-unbound)
+      (assignees :default 'eieio-unbound)
+      (forks     :default 'eieio-unbound)
+      (issues    :default 'eieio-unbound)
+      (labels    :default 'eieio-unbound)
+      (revnotes  :default 'eieio-unbound)
+      (pullreqs  :default 'eieio-unbound)
       selective-p
       worktree
-      (milestones :default eieio-unbound)])
+      (milestones :default 'eieio-unbound)])
 
     (assignee
      [(repository :not-null)
@@ -197,15 +197,15 @@ connectors you must install the respective package explicitly."
       locked-p
       milestone
       body
-      (assignees    :default eieio-unbound)
-      (cards        :default eieio-unbound)
-      (edits        :default eieio-unbound)
-      (labels       :default eieio-unbound)
-      (participants :default eieio-unbound)
-      (posts        :default eieio-unbound)
-      (reactions    :default eieio-unbound)
-      (timeline     :default eieio-unbound)
-      (marks        :default eieio-unbound)
+      (assignees    :default 'eieio-unbound)
+      (cards        :default 'eieio-unbound)
+      (edits        :default 'eieio-unbound)
+      (labels       :default 'eieio-unbound)
+      (participants :default 'eieio-unbound)
+      (posts        :default 'eieio-unbound)
+      (reactions    :default 'eieio-unbound)
+      (timeline     :default 'eieio-unbound)
+      (marks        :default 'eieio-unbound)
       note]
      (:foreign-key
       [repository] :references repository [id]
@@ -247,8 +247,8 @@ connectors you must install the respective package explicitly."
       created
       updated
       body
-      (edits :default eieio-unbound)
-      (reactions :default eieio-unbound)]
+      (edits :default 'eieio-unbound)
+      (reactions :default 'eieio-unbound)]
      (:foreign-key
       [issue] :references issue [id]
       :on-delete :cascade))
@@ -308,18 +308,18 @@ connectors you must install the respective package explicitly."
       head-repo
       milestone
       body
-      (assignees       :default eieio-unbound)
-      (cards           :default eieio-unbound)
-      (commits         :default eieio-unbound)
-      (edits           :default eieio-unbound)
-      (labels          :default eieio-unbound)
-      (participants    :default eieio-unbound)
-      (posts           :default eieio-unbound)
-      (reactions       :default eieio-unbound)
-      (review-requests :default eieio-unbound)
-      (reviews         :default eieio-unbound)
-      (timeline        :default eieio-unbound)
-      (marks           :default eieio-unbound)
+      (assignees       :default 'eieio-unbound)
+      (cards           :default 'eieio-unbound)
+      (commits         :default 'eieio-unbound)
+      (edits           :default 'eieio-unbound)
+      (labels          :default 'eieio-unbound)
+      (participants    :default 'eieio-unbound)
+      (posts           :default 'eieio-unbound)
+      (reactions       :default 'eieio-unbound)
+      (review-requests :default 'eieio-unbound)
+      (reviews         :default 'eieio-unbound)
+      (timeline        :default 'eieio-unbound)
+      (marks           :default 'eieio-unbound)
       note]
      (:foreign-key
       [repository] :references repository [id]
@@ -361,8 +361,8 @@ connectors you must install the respective package explicitly."
       created
       updated
       body
-      (edits :default eieio-unbound)
-      (reactions :default eieio-unbound)]
+      (edits :default 'eieio-unbound)
+      (reactions :default 'eieio-unbound)]
      (:foreign-key
       [pullreq] :references pullreq [id]
       :on-delete :cascade))
