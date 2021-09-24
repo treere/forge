@@ -161,6 +161,27 @@ connectors you must install the respective package explicitly."
       [parent] :references repository [id]
       :on-delete :cascade))
 
+    (label
+     [(repository :not-null)
+      (id :not-null :primary-key)
+      name
+      color
+      description]
+     (:foreign-key
+      [repository] :references repository [id]
+      :on-delete :cascade))
+
+    (mark
+     [;; For now this is always nil because it seems more useful to
+      ;; share marks between repositories.  We cannot omit this slot
+      ;; though because `closql--iref' expects `id' to be the second
+      ;; slot.
+      repository
+      (id :not-null :primary-key)
+      name
+      face
+      description])
+
     (issue
      [(class :not-null)
       (id :not-null :primary-key)
@@ -231,27 +252,6 @@ connectors you must install the respective package explicitly."
      (:foreign-key
       [issue] :references issue [id]
       :on-delete :cascade))
-
-    (label
-     [(repository :not-null)
-      (id :not-null :primary-key)
-      name
-      color
-      description]
-     (:foreign-key
-      [repository] :references repository [id]
-      :on-delete :cascade))
-
-    (mark
-     [;; For now this is always nil because it seems more useful to
-      ;; share marks between repositories.  We cannot omit this slot
-      ;; though because `closql--iref' expects `id' to be the second
-      ;; slot.
-      repository
-      (id :not-null :primary-key)
-      name
-      face
-      description])
 
     (milestone
      [(repository :not-null)
