@@ -63,18 +63,19 @@
                    ((and .has_issues
                          (not (assq 'issues val)))
                     (forge--fetch-issues repo cb until))
-                   ;; ((and .merge_requests_enabled
+                   ;; ((and .has_pull_requests
                          ;; (not (assq 'pullreqs val)))
                     ;; (forge--fetch-pullreqs repo cb until))
                    (t
                     (forge--msg repo t t   "Pulling REPO")
                     (forge--msg repo t nil "Storing REPO")
+                    (message "VALUE %S" val)
                     (emacsql-with-transaction (forge-db)
                       (forge--update-repository repo val)
                       (forge--update-assignees  repo .assignees)
                       (forge--update-labels     repo .labels)
                       (dolist (v .issues)   (forge--update-issue repo v))
-                      ;; (dolist (v .pullreqs) (forge--update-pullreq repo v))
+                      (dolist (v .pullreqs) (forge--update-pullreq repo v))
                       (oset repo sparse-p nil)
                       )
                     (forge--msg repo t t "Storing REPO")
@@ -85,7 +86,6 @@
 (cl-defmethod forge--fetch-repository ((repo forge-gitea-repository) callback)
   (forge--gtea-get repo "/repos/tre3ere/test" nil
     :callback (lambda (value _headers _status _req)
-                (message "repository %S" value)
                 (cond ((oref repo selective-p)
                        (setq value (append '((assignees) (forks) (labels)
                                              (issues) (pullreqs))
@@ -120,7 +120,6 @@
     '((per_page . 100))
     :unpaginate t
     :callback (lambda (value _headers _status _req)
-                (message "assignees %S" value)
                 (funcall callback callback (cons 'assignees value)))))
 
 (cl-defmethod forge--update-assignees ((repo forge-gitea-repository) data)
@@ -143,7 +142,6 @@
       (simple . "true"))
     :unpaginate t
     :callback (lambda (value _headers _status _req)
-                (message "forks %S" value)
                 (funcall callback callback (cons 'forks value)))))
 
 (cl-defmethod forge--update-forks ((repo forge-gitea-repository) data)
@@ -165,7 +163,6 @@
     '((per_page . 100))
     :unpaginate t
     :callback (lambda (value _headers _status _req)
-                (message "labels %S" value)
                 (funcall callback callback (cons 'labels value)))))
 
 
@@ -197,7 +194,7 @@
 (cl-defmethod forge--fetch-issue-posts ((repo forge-gitea-repository) cur cb)
   (let-alist (car cur)
     (forge--gtea-get repo
-      (format "/repos/tre3ere/test/issues/%s" .number)
+      (format "/repos/tre3ere/test/issues/%s/comments" .number)
       '((per_page . 100))
       :unpaginate t
       :callback (lambda (value _headers _status _req)
@@ -235,7 +232,6 @@
         (updated_after . ,(forge--topics-until repo until 'issue)))
       :unpaginate t
       :callback (lambda (value _headers _status _req)
-                  (message "issues %S" value)
                   (funcall cb cb value)))))
 
 (cl-defmethod forge--update-issue ((repo forge-gitea-repository) data)
@@ -264,25 +260,123 @@
         (closql-insert (forge-db) issue t)
         (unless (magit-get-boolean "forge.omitExpensive")
           (forge--set-id-slot repo issue 'assignees .assignees)
-          (message "AAAAAAAAAA %S" .labels)
           (forge--set-id-slot
            repo
            issue
            'labels
-           (mapcar (lambda (x) (alist-get 'name x)) .labels)))))))
-        ;; (dolist (c .notes)
-        ;;   (let-alist c
-        ;;     (let ((post
-        ;;            (forge-issue-post
-        ;;             :id      (forge--object-id issue-id .id)
-        ;;             :issue   issue-id
-        ;;             :number  .number
-        ;;             :author  .user.username
-        ;;             :created .created_at
-        ;;             :updated .updated_at
-        ;;             :body    (forge--sanitize-string .body))))
-        ;;       (closql-insert (forge-db) post t))))))))
+           (mapcar (lambda (x) (alist-get 'name x)) .labels)))
+        (dolist (c .notes)
+          (let-alist c
+            (let ((post
+                   (forge-issue-post
+                    :id      (forge--object-id issue-id .id)
+                    :issue   issue-id
+                    :number  .number
+                    :author  .user.username
+                    :created .created_at
+                    :updated .updated_at
+                    :body    (forge--sanitize-string .body))))
+              (closql-insert (forge-db) post t))))))))
 
+
+(cl-defmethod forge--fetch-pullreqs ((repo forge-gitea-repository) callback until)
+  (let ((cb (let (val cur cnt pos)
+              (lambda (cb &optional v)
+                (cond
+                 ((not pos)
+                  (if (setq cur (setq val v))
+                      (progn
+                        (setq pos 1)
+                        (setq cnt (length val))
+                        (forge--msg nil nil nil "Pulling pullreq %s/%s" pos cnt)
+                        (forge--fetch-pullreq-posts repo cur cb)
+                        )
+                    (forge--msg repo t t "Pulling REPO pullreqs")
+                    (funcall callback callback (cons 'pullreqs val))))
+                 ;; ((not (assq 'source_project (car cur)))
+                  ;; (forge--fetch-pullreq-source-repo repo cur cb))
+                 ;; ((not (assq 'target_project (car cur)))
+                  ;; (forge--fetch-pullreq-target-repo repo cur cb))
+                 (t
+                  (if (setq cur (cdr cur))
+                      (progn
+                        (cl-incf pos)
+                        (forge--msg nil nil nil "Pulling pullreq %s/%s" pos cnt)
+                        (forge--fetch-pullreq-posts repo cur cb))
+                    (forge--msg repo t t "Pulling REPO pullreqs")
+                    (funcall callback callback (cons 'pullreqs val)))))))))
+    (forge--msg repo t nil "Pulling REPO pullreqs")
+    (forge--gtea-get repo "/repos/tre3ere/test/pulls"
+      `((per_page . 100)
+        (order_by . "updated_at")
+        (updated_after . ,(forge--topics-until repo until 'pullreq)))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (funcall cb cb value)))))
+
+(cl-defmethod forge--fetch-pullreq-posts ((repo forge-gitea-repository) cur cb)
+  (let-alist (car cur)
+    (forge--gtea-get repo
+      (format "/repos/tre3ere/test/pulls/%s" .number)
+      '((per_page . 100))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (setf (alist-get 'notes (car cur)) value)
+                  (funcall cb cb)))))
+
+(cl-defmethod forge--update-pullreq ((repo forge-gitea-repository) data)
+  (emacsql-with-transaction (forge-db)
+    (let-alist data
+      (let* ((pullreq-id (forge--object-id 'forge-pullreq repo .number))
+             (pullreq
+              (forge-pullreq
+               :id           pullreq-id
+               :repository   (oref repo id)
+               :number       .number
+               :state        (pcase-exhaustive .state
+                               ("merge" 'merged)
+                               ("close" 'closed)
+                               ("open" 'open))
+               :author       .user.username
+               :title        .title
+               :created      .created_at
+               :updated      .updated_at
+               ;; `.merged_at' and `.closed_at' may both be nil even
+               ;; though the pullreq is merged or otherwise closed.
+               ;; In such cases use 1, so that these slots at least
+               ;; can serve as booleans.
+               :closed       (or .closed_at
+                                 (and (member .state '("closed" "merged")) 1))
+               :merged       (or .merged_at
+                                 (and (equal .state "merged") 1))
+               :locked-p     .discussion_locked
+               :editable-p   .allow_maintainer_to_push
+               :cross-repo-p (not (equal .source_project_id
+                                         .target_project_id))
+               :base-ref     .target_branch
+               :base-repo    .target_project.path_with_namespace
+               :head-ref     .source_branch
+               :head-user    .source_project.owner.username
+               :head-repo    .source_project.path_with_namespace
+               :milestone    .milestone.iid
+               :body         (forge--sanitize-string .description))))
+        (closql-insert (forge-db) pullreq t)
+        (unless (magit-get-boolean "forge.omitExpensive")
+          (forge--set-id-slot repo pullreq 'assignees (list .assignee))
+          (forge--set-id-slot repo pullreq 'labels (mapcar (lambda (x) (alist-get 'name x)) .labels)))
+        .body .id ; Silence Emacs 25 byte-compiler.
+        (dolist (c .notes)
+          (let-alist c
+            (let ((post
+                   (forge-pullreq-post
+                    :id      (forge--object-id pullreq-id .id)
+                    :pullreq pullreq-id
+                    :number  .id
+                    :author  .author.username
+                    :created .created_at
+                    :updated .updated_at
+                    :body    (forge--sanitize-string .body))))
+              (closql-insert (forge-db) post t))))))))
 
 (cl-defun forge--gtea-get (obj resource
                                &optional params
