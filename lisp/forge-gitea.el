@@ -56,13 +56,13 @@
                     (forge--fetch-repository repo cb))
                    ((not (assq 'assignees val))
                     (forge--fetch-assignees repo cb))
-                   ;; ((not (assq 'forks val))
-                    ;; (forge--fetch-forks repo cb))
-                   ;; ((not (assq 'labels val))
-                    ;; (forge--fetch-labels repo cb))
-                   ;; ((and .issues_enabled
-                         ;; (not (assq 'issues val)))
-                    ;; (forge--fetch-issues repo cb until))
+                   ((not (assq 'forks val))
+                    (forge--fetch-forks repo cb))
+                   ((not (assq 'labels val))
+                    (forge--fetch-labels repo cb))
+                   ((and .has_issues
+                         (not (assq 'issues val)))
+                    (forge--fetch-issues repo cb until))
                    ;; ((and .merge_requests_enabled
                          ;; (not (assq 'pullreqs val)))
                     ;; (forge--fetch-pullreqs repo cb until))
@@ -72,10 +72,10 @@
                     (emacsql-with-transaction (forge-db)
                       (forge--update-repository repo val)
                       (forge--update-assignees  repo .assignees)
-                      ;; (forge--update-labels     repo .labels)
-                      ;; (dolist (v .issues)   (forge--update-issue repo v))
+                      (forge--update-labels     repo .labels)
+                      (dolist (v .issues)   (forge--update-issue repo v))
                       ;; (dolist (v .pullreqs) (forge--update-pullreq repo v))
-                      ;; (oset repo sparse-p nil)
+                      (oset repo sparse-p nil)
                       )
                     (forge--msg repo t t "Storing REPO")
                     (unless (oref repo selective-p)
@@ -85,6 +85,7 @@
 (cl-defmethod forge--fetch-repository ((repo forge-gitea-repository) callback)
   (forge--gtea-get repo "/repos/tre3ere/test" nil
     :callback (lambda (value _headers _status _req)
+                (message "repository %S" value)
                 (cond ((oref repo selective-p)
                        (setq value (append '((assignees) (forks) (labels)
                                              (issues) (pullreqs))
@@ -119,7 +120,7 @@
     '((per_page . 100))
     :unpaginate t
     :callback (lambda (value _headers _status _req)
-                (message "Assignees %S" value)
+                (message "assignees %S" value)
                 (funcall callback callback (cons 'assignees value)))))
 
 (cl-defmethod forge--update-assignees ((repo forge-gitea-repository) data)
@@ -135,6 +136,152 @@
                             .full_name
                             .id)))
                   data))))
+
+(cl-defmethod forge--fetch-forks ((repo forge-gitea-repository) callback)
+  (forge--gtea-get repo "/repos/tre3ere/test/forks"
+    '((per_page . 100)
+      (simple . "true"))
+    :unpaginate t
+    :callback (lambda (value _headers _status _req)
+                (message "forks %S" value)
+                (funcall callback callback (cons 'forks value)))))
+
+(cl-defmethod forge--update-forks ((repo forge-gitea-repository) data)
+  (oset repo forks
+        (with-slots (id) repo
+          (mapcar (lambda (row)
+                    (let-alist row
+                      (nconc (forge--repository-ids
+                              (eieio-object-class repo)
+                              (oref repo githost)
+                              .namespace.path
+                              .path)
+                             (list .namespace.path
+                                   .path))))
+                  data))))
+
+(cl-defmethod forge--fetch-labels ((repo forge-gitea-repository) callback)
+  (forge--gtea-get repo "/repos/tre3ere/test/labels"
+    '((per_page . 100))
+    :unpaginate t
+    :callback (lambda (value _headers _status _req)
+                (message "labels %S" value)
+                (funcall callback callback (cons 'labels value)))))
+
+
+(cl-defmethod forge--update-labels ((repo forge-gitea-repository) data)
+  (oset repo labels
+        (with-slots (id) repo
+          (mapcar (lambda (row)
+                    (let-alist row
+                      ;; We should use the label's `id' instead of its
+                      ;; `name' but a topic's `labels' field is a list
+                      ;; of names instead of a list of ids or an alist.
+                      ;; As a result of this we cannot recognize when
+                      ;; a label is renamed and a topic continues to be
+                      ;; tagged with the old label name until it itself
+                      ;; is modified somehow.  Additionally it leads to
+                      ;; name conflicts between group and project
+                      ;; labels.  See #160.
+                      (list (forge--object-id id .name)
+                            .name
+                            (downcase .color)
+                            .description)))
+                  ;; For now simply remove one of the duplicates.
+                  (cl-delete-duplicates data
+                                        :key (apply-partially #'alist-get 'name)
+                                        :test #'equal)))))
+
+
+
+(cl-defmethod forge--fetch-issue-posts ((repo forge-gitea-repository) cur cb)
+  (let-alist (car cur)
+    (forge--gtea-get repo
+      (format "/repos/tre3ere/test/issues/%s" .number)
+      '((per_page . 100))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (setf (alist-get 'notes (car cur)) value)
+                  (funcall cb cb)))))
+
+
+(cl-defmethod forge--fetch-issues ((repo forge-gitea-repository) callback until)
+  (let ((cb (let (val cur cnt pos)
+              (lambda (cb &optional v)
+                (cond
+                 ((not pos)
+                  (if (setq cur (setq val v))
+                      (progn
+                        (setq pos 1)
+                        (setq cnt (length val))
+                        (forge--msg nil nil nil "Pulling issue %s/%s" pos cnt)
+                        (forge--fetch-issue-posts repo cur cb)
+                        )
+                    (forge--msg repo t t "Pulling REPO issues")
+                    (funcall callback callback (cons 'issues val))))
+                 (t
+                  (if (setq cur (cdr cur))
+                      (progn
+                        (cl-incf pos)
+                        (forge--msg nil nil nil "Pulling issue %s/%s" pos cnt)
+                        (forge--fetch-issue-posts repo cur cb))
+                    (forge--msg repo t t "Pulling REPO issues")
+                    (funcall callback callback (cons 'issues val)))))))))
+    (forge--msg repo t nil "Pulling REPO issues")
+    (forge--gtea-get repo "/repos/tre3ere/test/issues"
+      `((per_page . 100)
+        (order_by . "updated_at")
+        (type . "issues")
+        (updated_after . ,(forge--topics-until repo until 'issue)))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (message "issues %S" value)
+                  (funcall cb cb value)))))
+
+(cl-defmethod forge--update-issue ((repo forge-gitea-repository) data)
+  (emacsql-with-transaction (forge-db)
+    (let-alist data
+      (let* ((issue-id (forge--object-id 'forge-issue repo .number))
+             (issue
+              (forge-issue
+               :id           issue-id
+               :repository   (oref repo id)
+               :number       .number
+               :state        (pcase-exhaustive .state
+                               ("close" 'closed)
+                               ("open" 'open))
+               :author       .user.username
+               :title        .title
+               :created      .created_at
+               :updated      .updated_at
+               ;; `.closed_at' may be nil even though the issues is
+               ;; closed.  In such cases use 1, so that this slots
+               ;; at least can serve as a boolean.
+               :closed       (or .closed_at (and (equal .state "close") 1))
+               :locked-p     .is_locked
+               :milestone    .milestone.iid
+               :body         (forge--sanitize-string .body))))
+        (closql-insert (forge-db) issue t)
+        (unless (magit-get-boolean "forge.omitExpensive")
+          (forge--set-id-slot repo issue 'assignees .assignees)
+          (message "AAAAAAAAAA %S" .labels)
+          (forge--set-id-slot
+           repo
+           issue
+           'labels
+           (mapcar (lambda (x) (alist-get 'name x)) .labels)))))))
+        ;; (dolist (c .notes)
+        ;;   (let-alist c
+        ;;     (let ((post
+        ;;            (forge-issue-post
+        ;;             :id      (forge--object-id issue-id .id)
+        ;;             :issue   issue-id
+        ;;             :number  .number
+        ;;             :author  .user.username
+        ;;             :created .created_at
+        ;;             :updated .updated_at
+        ;;             :body    (forge--sanitize-string .body))))
+        ;;       (closql-insert (forge-db) post t))))))))
 
 
 (cl-defun forge--gtea-get (obj resource
