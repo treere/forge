@@ -69,7 +69,6 @@
                    (t
                     (forge--msg repo t t   "Pulling REPO")
                     (forge--msg repo t nil "Storing REPO")
-                    (message "VALUE %S" val)
                     (emacsql-with-transaction (forge-db)
                       (forge--update-repository repo val)
                       (forge--update-assignees  repo .assignees)
