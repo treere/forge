@@ -171,7 +171,7 @@
                     (let-alist row
                       (list (forge--object-id id .name)
                             .name
-                            (downcase .color)
+                            (format "#%s" (downcase .color))
                             .description)))
                   ;; For now simply remove one of the duplicates.
                   (cl-delete-duplicates data
