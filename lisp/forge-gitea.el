@@ -293,10 +293,6 @@
                         )
                     (forge--msg repo t t "Pulling REPO pullreqs")
                     (funcall callback callback (cons 'pullreqs val))))
-                 ;; ((not (assq 'source_project (car cur)))
-                  ;; (forge--fetch-pullreq-source-repo repo cur cb))
-                 ;; ((not (assq 'target_project (car cur)))
-                  ;; (forge--fetch-pullreq-target-repo repo cur cb))
                  (t
                   (if (setq cur (cdr cur))
                       (progn
@@ -344,18 +340,17 @@
                :editable-p   .allow_maintainer_to_push
                :cross-repo-p (not (equal .source_project_id
                                          .target_project_id))
-               :base-ref     .target_branch
-               :base-repo    .target_project.path_with_namespace
-               :head-ref     .source_branch
-               :head-user    .source_project.owner.username
-               :head-repo    .source_project.path_with_namespace
+               :base-ref     .base.ref
+               :base-repo    .base.repo.full_name
+               :head-ref     .head.ref
+               :head-user    .head.repo.owner.username
+               :head-repo    .head.repo.fullname
                :milestone    .milestone.iid
                :body         (forge--sanitize-string .description))))
         (closql-insert (forge-db) pullreq t)
         (unless (magit-get-boolean "forge.omitExpensive")
           (forge--set-id-slot repo pullreq 'assignees (list .assignee))
           (forge--set-id-slot repo pullreq 'labels (mapcar (lambda (x) (alist-get 'name x)) .labels)))
-        .body .id ; Silence Emacs 25 byte-compiler.
         (dolist (c .notes)
           (let-alist c
             (let ((post
