@@ -63,9 +63,9 @@
                    ((and .has_issues
                          (not (assq 'issues val)))
                     (forge--fetch-issues repo cb until))
-                   ;; ((and .has_pull_requests
-                         ;; (not (assq 'pullreqs val)))
-                    ;; (forge--fetch-pullreqs repo cb until))
+                   ((and .has_pull_requests
+                         (not (assq 'pullreqs val)))
+                    (forge--fetch-pullreqs repo cb until))
                    (t
                     (forge--msg repo t t   "Pulling REPO")
                     (forge--msg repo t nil "Storing REPO")
@@ -269,7 +269,7 @@
           (let-alist c
             (let ((post
                    (forge-issue-post
-                    :id      (forge--object-id issue-id .id)
+                    :id      (forge--object-id issue-id .number)
                     :issue   issue-id
                     :number  .number
                     :author  .user.username
@@ -289,7 +289,7 @@
                         (setq pos 1)
                         (setq cnt (length val))
                         (forge--msg nil nil nil "Pulling pullreq %s/%s" pos cnt)
-                        (forge--fetch-pullreq-posts repo cur cb)
+                        (forge--fetch-issue-posts repo cur cb)
                         )
                     (forge--msg repo t t "Pulling REPO pullreqs")
                     (funcall callback callback (cons 'pullreqs val))))
@@ -302,7 +302,7 @@
                       (progn
                         (cl-incf pos)
                         (forge--msg nil nil nil "Pulling pullreq %s/%s" pos cnt)
-                        (forge--fetch-pullreq-posts repo cur cb))
+                        (forge--fetch-issue-posts repo cur cb))
                     (forge--msg repo t t "Pulling REPO pullreqs")
                     (funcall callback callback (cons 'pullreqs val)))))))))
     (forge--msg repo t nil "Pulling REPO pullreqs")
@@ -314,15 +314,6 @@
       :callback (lambda (value _headers _status _req)
                   (funcall cb cb value)))))
 
-(cl-defmethod forge--fetch-pullreq-posts ((repo forge-gitea-repository) cur cb)
-  (let-alist (car cur)
-    (forge--gtea-get repo
-      (format "/repos/tre3ere/test/pulls/%s" .number)
-      '((per_page . 100))
-      :unpaginate t
-      :callback (lambda (value _headers _status _req)
-                  (setf (alist-get 'notes (car cur)) value)
-                  (funcall cb cb)))))
 
 (cl-defmethod forge--update-pullreq ((repo forge-gitea-repository) data)
   (emacsql-with-transaction (forge-db)
@@ -369,10 +360,10 @@
           (let-alist c
             (let ((post
                    (forge-pullreq-post
-                    :id      (forge--object-id pullreq-id .id)
+                    :id      (forge--object-id pullreq-id .number)
                     :pullreq pullreq-id
-                    :number  .id
-                    :author  .author.username
+                    :number  .number
+                    :author  .user.username
                     :created .created_at
                     :updated .updated_at
                     :body    (forge--sanitize-string .body))))
