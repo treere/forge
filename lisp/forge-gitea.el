@@ -84,16 +84,17 @@
     (funcall cb cb)))
 
 (cl-defmethod forge--fetch-repository ((repo forge-gitea-repository) callback)
-  (forge--gtea-get repo "/repos/tre3ere/test" nil
-    :callback (lambda (value _headers _status _req)
-                (cond ((oref repo selective-p)
-                       (setq value (append '((assignees) (forks) (labels)
-                                             (issues) (pullreqs))
-                                           value)))
-                      ((magit-get-boolean "forge.omitExpensive")
-                       (setq value (append '((assignees) (forks) (labels))
-                                           value))))
-                (funcall callback callback value))))
+  (with-slots (owner name) repo
+    (forge--gtea-get repo (format "/repos/%s/%s" owner name) nil
+      :callback (lambda (value _headers _status _req)
+                  (cond ((oref repo selective-p)
+                         (setq value (append '((assignees) (forks) (labels)
+                                               (issues) (pullreqs))
+                                             value)))
+                        ((magit-get-boolean "forge.omitExpensive")
+                         (setq value (append '((assignees) (forks) (labels))
+                                             value))))
+                  (funcall callback callback value)))))
 
 (cl-defmethod forge--update-repository ((repo forge-gitea-repository) data)
   (let-alist data
@@ -116,11 +117,12 @@
 
 
 (cl-defmethod forge--fetch-assignees ((repo forge-gitea-repository) callback)
-  (forge--gtea-get repo "/repos/tre3ere/test/assignees"
-    '((per_page . 100))
-    :unpaginate t
-    :callback (lambda (value _headers _status _req)
-                (funcall callback callback (cons 'assignees value)))))
+  (with-slots (owner name) repo
+    (forge--gtea-get repo (format "/repos/%s/%s/assignees" owner name) 
+      '((per_page . 100))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (funcall callback callback (cons 'assignees value))))))
 
 (cl-defmethod forge--update-assignees ((repo forge-gitea-repository) data)
   (oset repo assignees
@@ -137,12 +139,13 @@
                   data))))
 
 (cl-defmethod forge--fetch-forks ((repo forge-gitea-repository) callback)
-  (forge--gtea-get repo "/repos/tre3ere/test/forks"
-    '((per_page . 100)
-      (simple . "true"))
-    :unpaginate t
-    :callback (lambda (value _headers _status _req)
-                (funcall callback callback (cons 'forks value)))))
+  (with-slots (owner name) repo
+    (forge--gtea-get repo (format "/repos/%s/%s/forks" owner name) 
+      '((per_page . 100)
+        (simple . "true"))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (funcall callback callback (cons 'forks value))))))
 
 (cl-defmethod forge--update-forks ((repo forge-gitea-repository) data)
   (oset repo forks
@@ -159,27 +162,18 @@
                   data))))
 
 (cl-defmethod forge--fetch-labels ((repo forge-gitea-repository) callback)
-  (forge--gtea-get repo "/repos/tre3ere/test/labels"
-    '((per_page . 100))
-    :unpaginate t
-    :callback (lambda (value _headers _status _req)
-                (funcall callback callback (cons 'labels value)))))
-
+  (with-slots (owner name) repo
+    (forge--gtea-get repo (format "/repos/%s/%s/labels" owner name)
+      '((per_page . 100))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (funcall callback callback (cons 'labels value))))))
 
 (cl-defmethod forge--update-labels ((repo forge-gitea-repository) data)
   (oset repo labels
         (with-slots (id) repo
           (mapcar (lambda (row)
                     (let-alist row
-                      ;; We should use the label's `id' instead of its
-                      ;; `name' but a topic's `labels' field is a list
-                      ;; of names instead of a list of ids or an alist.
-                      ;; As a result of this we cannot recognize when
-                      ;; a label is renamed and a topic continues to be
-                      ;; tagged with the old label name until it itself
-                      ;; is modified somehow.  Additionally it leads to
-                      ;; name conflicts between group and project
-                      ;; labels.  See #160.
                       (list (forge--object-id id .name)
                             .name
                             (downcase .color)
@@ -189,17 +183,16 @@
                                         :key (apply-partially #'alist-get 'name)
                                         :test #'equal)))))
 
-
-
 (cl-defmethod forge--fetch-issue-posts ((repo forge-gitea-repository) cur cb)
-  (let-alist (car cur)
-    (forge--gtea-get repo
-      (format "/repos/tre3ere/test/issues/%s/comments" .number)
-      '((per_page . 100))
-      :unpaginate t
-      :callback (lambda (value _headers _status _req)
-                  (setf (alist-get 'notes (car cur)) value)
-                  (funcall cb cb)))))
+  (with-slots (owner name) repo
+    (let-alist (car cur)
+      (forge--gtea-get repo
+        (format "/repos/%s/%s/issues/%s/comments" owner name .number)
+        '((per_page . 100))
+        :unpaginate t
+        :callback (lambda (value _headers _status _req)
+                    (setf (alist-get 'notes (car cur)) value)
+                    (funcall cb cb))))))
 
 
 (cl-defmethod forge--fetch-issues ((repo forge-gitea-repository) callback until)
@@ -212,8 +205,7 @@
                         (setq pos 1)
                         (setq cnt (length val))
                         (forge--msg nil nil nil "Pulling issue %s/%s" pos cnt)
-                        (forge--fetch-issue-posts repo cur cb)
-                        )
+                        (forge--fetch-issue-posts repo cur cb))
                     (forge--msg repo t t "Pulling REPO issues")
                     (funcall callback callback (cons 'issues val))))
                  (t
@@ -225,14 +217,15 @@
                     (forge--msg repo t t "Pulling REPO issues")
                     (funcall callback callback (cons 'issues val)))))))))
     (forge--msg repo t nil "Pulling REPO issues")
-    (forge--gtea-get repo "/repos/tre3ere/test/issues"
-      `((per_page . 100)
-        (order_by . "updated_at")
-        (type . "issues")
-        (updated_after . ,(forge--topics-until repo until 'issue)))
-      :unpaginate t
-      :callback (lambda (value _headers _status _req)
-                  (funcall cb cb value)))))
+    (with-slots (owner name) repo
+      (forge--gtea-get repo (format "/repos/%s/%s/issues" owner name )
+        `((per_page . 100)
+          (order_by . "updated_at")
+          (type . "issues")
+          (updated_after . ,(forge--topics-until repo until 'issue)))
+        :unpaginate t
+        :callback (lambda (value _headers _status _req)
+                    (funcall cb cb value))))))
 
 (cl-defmethod forge--update-issue ((repo forge-gitea-repository) data)
   (emacsql-with-transaction (forge-db)
@@ -302,13 +295,14 @@
                     (forge--msg repo t t "Pulling REPO pullreqs")
                     (funcall callback callback (cons 'pullreqs val)))))))))
     (forge--msg repo t nil "Pulling REPO pullreqs")
-    (forge--gtea-get repo "/repos/tre3ere/test/pulls"
-      `((per_page . 100)
-        (order_by . "updated_at")
-        (updated_after . ,(forge--topics-until repo until 'pullreq)))
-      :unpaginate t
-      :callback (lambda (value _headers _status _req)
-                  (funcall cb cb value)))))
+    (with-slots (owner name) repo
+      (forge--gtea-get repo (format "/repos/%s/%s/pulls" owner name)
+        `((per_page . 100)
+          (order_by . "updated_at")
+          (updated_after . ,(forge--topics-until repo until 'pullreq)))
+        :unpaginate t
+        :callback (lambda (value _headers _status _req)
+                    (funcall cb cb value))))))
 
 
 (cl-defmethod forge--update-pullreq ((repo forge-gitea-repository) data)
