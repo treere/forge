@@ -255,7 +255,7 @@
           (let-alist c
             (let ((post
                    (forge-issue-post
-                    :id      (forge--object-id issue-id .number)
+                    :id      (forge--object-id issue-id .id)
                     :issue   issue-id
                     :number  .number
                     :author  .user.username
