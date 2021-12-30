@@ -84,17 +84,16 @@
     (funcall cb cb)))
 
 (cl-defmethod forge--fetch-repository ((repo forge-gitea-repository) callback)
-  (with-slots (owner name) repo
-    (forge--gtea-get repo (format "/repos/%s/%s" owner name) nil
-      :callback (lambda (value _headers _status _req)
-                  (cond ((oref repo selective-p)
-                         (setq value (append '((assignees) (forks) (labels)
-                                               (issues) (pullreqs))
-                                             value)))
-                        ((magit-get-boolean "forge.omitExpensive")
-                         (setq value (append '((assignees) (forks) (labels))
-                                             value))))
-                  (funcall callback callback value)))))
+  (forge--gtea-get repo "/repos/:project" nil
+    :callback (lambda (value _headers _status _req)
+                (cond ((oref repo selective-p)
+                       (setq value (append '((assignees) (forks) (labels)
+                                             (issues) (pullreqs))
+                                           value)))
+                      ((magit-get-boolean "forge.omitExpensive")
+                       (setq value (append '((assignees) (forks) (labels))
+                                           value))))
+                (funcall callback callback value))))
 
 (cl-defmethod forge--update-repository ((repo forge-gitea-repository) data)
   (let-alist data
@@ -117,12 +116,11 @@
 
 
 (cl-defmethod forge--fetch-assignees ((repo forge-gitea-repository) callback)
-  (with-slots (owner name) repo
-    (forge--gtea-get repo (format "/repos/%s/%s/assignees" owner name) 
-      '((per_page . 100))
-      :unpaginate t
-      :callback (lambda (value _headers _status _req)
-                  (funcall callback callback (cons 'assignees value))))))
+  (forge--gtea-get repo "/repos/:project/assignees"
+    '((per_page . 100))
+    :unpaginate t
+    :callback (lambda (value _headers _status _req)
+                (funcall callback callback (cons 'assignees value)))))
 
 (cl-defmethod forge--update-assignees ((repo forge-gitea-repository) data)
   (oset repo assignees
@@ -139,13 +137,12 @@
                   data))))
 
 (cl-defmethod forge--fetch-forks ((repo forge-gitea-repository) callback)
-  (with-slots (owner name) repo
-    (forge--gtea-get repo (format "/repos/%s/%s/forks" owner name) 
-      '((per_page . 100)
-        (simple . "true"))
-      :unpaginate t
-      :callback (lambda (value _headers _status _req)
-                  (funcall callback callback (cons 'forks value))))))
+  (forge--gtea-get repo "/repos/:project/forks" 
+    '((per_page . 100)
+      (simple . "true"))
+    :unpaginate t
+    :callback (lambda (value _headers _status _req)
+                (funcall callback callback (cons 'forks value)))))
 
 (cl-defmethod forge--update-forks ((repo forge-gitea-repository) data)
   (oset repo forks
@@ -162,12 +159,11 @@
                   data))))
 
 (cl-defmethod forge--fetch-labels ((repo forge-gitea-repository) callback)
-  (with-slots (owner name) repo
-    (forge--gtea-get repo (format "/repos/%s/%s/labels" owner name)
-      '((per_page . 100))
-      :unpaginate t
-      :callback (lambda (value _headers _status _req)
-                  (funcall callback callback (cons 'labels value))))))
+  (forge--gtea-get repo "/repos/:project/labels"
+    '((per_page . 100))
+    :unpaginate t
+    :callback (lambda (value _headers _status _req)
+                (funcall callback callback (cons 'labels value)))))
 
 (cl-defmethod forge--update-labels ((repo forge-gitea-repository) data)
   (oset repo labels
@@ -184,15 +180,14 @@
                                         :test #'equal)))))
 
 (cl-defmethod forge--fetch-issue-posts ((repo forge-gitea-repository) cur cb)
-  (with-slots (owner name) repo
-    (let-alist (car cur)
-      (forge--gtea-get repo
-        (format "/repos/%s/%s/issues/%s/comments" owner name .number)
-        '((per_page . 100))
-        :unpaginate t
-        :callback (lambda (value _headers _status _req)
-                    (setf (alist-get 'notes (car cur)) value)
-                    (funcall cb cb))))))
+  (let-alist (car cur)
+    (forge--gtea-get repo
+      (format "/repos/:project/issues/%s/comments" .number)
+      '((per_page . 100))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (setf (alist-get 'notes (car cur)) value)
+                  (funcall cb cb)))))
 
 
 (cl-defmethod forge--fetch-issues ((repo forge-gitea-repository) callback until)
@@ -217,15 +212,14 @@
                     (forge--msg repo t t "Pulling REPO issues")
                     (funcall callback callback (cons 'issues val)))))))))
     (forge--msg repo t nil "Pulling REPO issues")
-    (with-slots (owner name) repo
-      (forge--gtea-get repo (format "/repos/%s/%s/issues" owner name )
-        `((per_page . 100)
-          (order_by . "updated_at")
-          (type . "issues")
-          (updated_after . ,(forge--topics-until repo until 'issue)))
-        :unpaginate t
-        :callback (lambda (value _headers _status _req)
-                    (funcall cb cb value))))))
+    (forge--gtea-get repo "/repos/:project/issues"
+      `((per_page . 100)
+        (order_by . "updated_at")
+        (type . "issues")
+        (updated_after . ,(forge--topics-until repo until 'issue)))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (funcall cb cb value)))))
 
 (cl-defmethod forge--update-issue ((repo forge-gitea-repository) data)
   (emacsql-with-transaction (forge-db)
@@ -295,14 +289,13 @@
                     (forge--msg repo t t "Pulling REPO pullreqs")
                     (funcall callback callback (cons 'pullreqs val)))))))))
     (forge--msg repo t nil "Pulling REPO pullreqs")
-    (with-slots (owner name) repo
-      (forge--gtea-get repo (format "/repos/%s/%s/pulls" owner name)
-        `((per_page . 100)
-          (order_by . "updated_at")
-          (updated_after . ,(forge--topics-until repo until 'pullreq)))
-        :unpaginate t
-        :callback (lambda (value _headers _status _req)
-                    (funcall cb cb value))))))
+    (forge--gtea-get repo  "/repos/:project/pulls"
+      `((per_page . 100)
+        (order_by . "updated_at")
+        (updated_after . ,(forge--topics-until repo until 'pullreq)))
+      :unpaginate t
+      :callback (lambda (value _headers _status _req)
+                  (funcall cb cb value)))))
 
 
 (cl-defmethod forge--update-pullreq ((repo forge-gitea-repository) data)
@@ -358,13 +351,43 @@
                     :body    (forge--sanitize-string .body))))
               (closql-insert (forge-db) post t))))))))
 
+
+;;; Mutations
+
+(cl-defmethod forge--submit-create-issue ((_ forge-gitea-repository) repo)
+  (let-alist (forge--topic-parse-buffer)
+    (forge--gtea-post repo "/repos/:project/issues"
+      `((title       . , .title)
+        (body . , .body))
+      :callback  (forge--post-submit-callback)
+      :errorback (forge--post-submit-errorback))))
+
+(cl-defmethod forge--submit-create-post ((_ forge-gitea-repository) topic)
+  (forge--gtea-post topic
+    "/repos/:project/issues/:number/comments"
+    `((body . ,(string-trim (buffer-string))))
+    :callback  (forge--post-submit-callback)
+    :errorback (forge--post-submit-errorback)))
+
+(cl-defmethod forge--topic-templates ((repo forge-gitea-repository)
+                                      (_ (subclass forge-issue)))
+  (--filter (string-match-p "\\`\\.gitea/issue_template.md\\'" it)
+            (magit-revision-files (oref repo default-branch))))
+
+(cl-defmethod forge--topic-templates ((repo forge-gitea-repository)
+                                      (_ (subclass forge-pullreq)))
+  (--filter (string-match-p "\\`\\.gitea/pull_request_template.md\\'" it)
+            (magit-revision-files (oref repo default-branch))))
+
+;;; Utilities
+
 (cl-defun forge--gtea-get (obj resource
                                &optional params
                                &key query payload headers
                                silent unpaginate noerror reader
                                host callback errorback)
   (declare (indent defun))
-  (gtea-get (if obj (forge--format-resource obj resource) resource)
+  (gtea-get (if obj (forge--gitea-format-resource obj resource) resource)
             params
             :host (or host (oref (forge-get-repository obj) apihost))
             :auth 'forge
@@ -373,6 +396,84 @@
             :noerror noerror :reader reader
             :callback callback
             :errorback (or errorback (and callback t))))
+
+(cl-defun forge--gtea-put (obj resource
+                               &optional params
+                               &key query payload headers
+                               silent unpaginate noerror reader
+                               host callback errorback)
+  (declare (indent defun))
+  (gtea-put (if obj (forge--gitea-format-resource obj resource) resource)
+            params
+            :host (or host (oref (forge-get-repository obj) apihost))
+            :auth 'forge
+            :query query :payload payload :headers headers
+            :silent silent :unpaginate unpaginate
+            :noerror noerror :reader reader
+            :callback callback
+            :errorback (or errorback (and callback t))))
+
+(cl-defun forge--gtea-post (obj resource
+                                &optional params
+                                &key query payload headers
+                                silent unpaginate noerror reader
+                                host callback errorback)
+  (declare (indent defun))
+  (gtea-post (forge--gitea-format-resource obj resource)
+             params
+             :host (or host (oref (forge-get-repository obj) apihost))
+             :auth 'forge
+             :query query :payload payload :headers headers
+             :silent silent :unpaginate unpaginate
+             :noerror noerror :reader reader
+             :callback callback
+             :errorback (or errorback (and callback t))))
+
+(cl-defun forge--gtea-delete (obj resource
+                                  &optional params
+                                  &key query payload headers
+                                  silent unpaginate noerror reader
+                                  host callback errorback)
+  (declare (indent defun))
+  (gtea-delete (forge--gitea-format-resource obj resource)
+               params
+               :host (or host (oref (forge-get-repository obj) apihost))
+               :auth 'forge
+               :query query :payload payload :headers headers
+               :silent silent :unpaginate unpaginate
+               :noerror noerror :reader reader
+               :callback callback
+               :errorback (or errorback (and callback t))))
+
+
+(cl-defmethod forge--gitea-format-resource ((object forge-object) resource)
+  (save-match-data
+    (setq resource
+          (replace-regexp-in-string
+           ":\\([^/]+\\)"
+           (lambda (str)
+             (let ((slot (intern (substring str 1))))
+               (or (when-let
+                       ((v (ignore-errors
+                             (cl-case slot
+                               (repo    (oref object name))
+                               (project (concat (replace-regexp-in-string
+                                                 "/" "%2F" (oref object owner))
+                                                "/"
+                                                (oref object name)))
+                               (topic   (and (forge--childp object 'forge-topic)
+                                             (oref object number)))
+                               (t       (eieio-oref object slot))))))
+                     (format "%s" v))
+                   str)))
+           resource t t))
+    (if (string-match ":[^/]*" resource)
+        (if-let ((parent (ignore-errors (forge-get-parent object))))
+            (forge--gitea-format-resource parent resource)
+          (error "Cannot resolve %s for a %s"
+                 (match-string 0 resource)
+                 (eieio-object-class object)))
+      resource)))
 
 ;;; _
 (provide 'forge-gitea)
