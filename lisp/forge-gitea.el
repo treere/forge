@@ -378,6 +378,21 @@
   (--filter (string-match-p "\\`\\.gitea/pull_request_template.md\\'" it)
             (magit-revision-files (oref repo default-branch))))
 
+(cl-defmethod forge--set-topic-labels ((repo forge-gitea-repository) topic labels)
+  (let ((cb
+         (lambda (arg &optional fetched-labels)
+           (let* ((alist-id-label (mapcar
+                                   #'(lambda (l) (cons (cdr (assq 'name l))  (cdr (assq 'id l))))
+                                   (cdr fetched-labels)))
+                  (labels-id (mapcar #'(lambda (x) (cdr (assoc x alist-id-label))) labels)))
+             (forge--gtea-put
+               repo
+               (format "repos/:project/issues/%s/labels" (oref topic number))
+               `((labels . , labels-id))
+               :callback  #'(lambda (&rest _) (forge-pull))
+               :errorback (forge--post-submit-errorback))))))
+    (forge--fetch-labels repo cb)))
+
 ;;; Utilities
 
 (cl-defun forge--gtea-get (obj resource
