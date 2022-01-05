@@ -214,6 +214,7 @@
     (forge--gtea-get repo "/repos/:project/issues"
       `((per_page . 100)
         (order_by . "updated_at")
+        (state . "all")
         (type . "issues")
         (updated_after . ,(forge--topics-until repo until 'issue)))
       :unpaginate t
@@ -230,7 +231,7 @@
                :repository   (oref repo id)
                :number       .number
                :state        (pcase-exhaustive .state
-                               ("close" 'closed)
+                               ("closed" 'closed)
                                ("open" 'open))
                :author       .user.username
                :title        .title
@@ -403,6 +404,14 @@
 (cl-defmethod forge--set-topic-assignees ((repo forge-gitea-repository) topic assignees)
   (forge--gtea-patch repo (format "repos/:project/issues/%s" (oref topic number))
     `((assignees . , assignees))
+      :callback  #'(lambda (value headers status req) (forge-pull))
+      :errorback (forge--post-submit-errorback)))
+
+(cl-defmethod forge--set-topic-state ((repo forge-gitea-repository) topic)
+  (forge--gtea-patch repo (format "repos/:project/issues/%s" (oref topic number))
+    `((state . , (cl-ecase (oref topic state)
+                   (closed "reopen")
+                   (open   "closed"))))
       :callback  #'(lambda (value headers status req) (forge-pull))
       :errorback (forge--post-submit-errorback)))
 
