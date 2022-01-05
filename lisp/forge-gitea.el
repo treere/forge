@@ -389,9 +389,16 @@
                repo
                (format "repos/:project/issues/%s/labels" (oref topic number))
                `((labels . , labels-id))
-               :callback  #'(lambda (&rest _) (forge-pull))
+               :callback  #'(lambda (value headers status req) (forge-pull))
                :errorback (forge--post-submit-errorback))))))
     (forge--fetch-labels repo cb)))
+
+(cl-defmethod forge--submit-edit-post ((repo forge-gitea-repository) post)
+  (let-alist (forge--topic-parse-buffer)
+    (forge--gtea-patch repo (format "repos/:project/issues/%s" (oref post number))
+      `((body . , .body))
+      :callback  (forge--post-submit-callback)
+      :errorback (forge--post-submit-errorback))))
 
 ;;; Utilities
 
@@ -450,6 +457,22 @@
                                   host callback errorback)
   (declare (indent defun))
   (gtea-delete (forge--gitea-format-resource obj resource)
+               params
+               :host (or host (oref (forge-get-repository obj) apihost))
+               :auth 'forge
+               :query query :payload payload :headers headers
+               :silent silent :unpaginate unpaginate
+               :noerror noerror :reader reader
+               :callback callback
+               :errorback (or errorback (and callback t))))
+
+(cl-defun forge--gtea-patch (obj resource
+                                  &optional params
+                                  &key query payload headers
+                                  silent unpaginate noerror reader
+                                  host callback errorback)
+  (declare (indent defun))
+  (gtea-patch (forge--gitea-format-resource obj resource)
                params
                :host (or host (oref (forge-get-repository obj) apihost))
                :auth 'forge
