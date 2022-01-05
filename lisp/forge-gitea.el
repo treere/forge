@@ -400,6 +400,12 @@
       :callback  (forge--post-submit-callback)
       :errorback (forge--post-submit-errorback))))
 
+(cl-defmethod forge--set-topic-assignees ((repo forge-gitea-repository) topic assignees)
+  (forge--gtea-patch repo (format "repos/:project/issues/%s" (oref topic number))
+    `((assignees . , assignees))
+      :callback  #'(lambda (value headers status req) (forge-pull))
+      :errorback (forge--post-submit-errorback)))
+
 ;;; Utilities
 
 (cl-defun forge--gtea-get (obj resource
