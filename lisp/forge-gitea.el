@@ -309,7 +309,7 @@
                :number       .number
                :state        (pcase-exhaustive .state
                                ("merge" 'merged)
-                               ("close" 'closed)
+                               ("closed" 'closed)
                                ("open" 'open))
                :author       .user.username
                :title        .title
@@ -385,12 +385,14 @@
            (let* ((alist-id-label (mapcar
                                    #'(lambda (l) (cons (cdr (assq 'name l))  (cdr (assq 'id l))))
                                    (cdr fetched-labels)))
-                  (labels-id (mapcar #'(lambda (x) (cdr (assoc x alist-id-label))) labels)))
+                  (labels-id (mapcar #'(lambda (x) (cdr (assoc x alist-id-label))) labels))
+                  (cb (lambda (value headers status req) (forge-pull))))
              (forge--gtea-put
                repo
                (format "repos/:project/issues/%s/labels" (oref topic number))
                `((labels . , labels-id))
-               :callback  #'(lambda (value headers status req) (forge-pull))
+               ;; :callback  #'(lambda (value headers status req) (forge-pull))
+               :callback  cb
                :errorback (forge--post-submit-errorback))))))
     (forge--fetch-labels repo cb)))
 
@@ -403,16 +405,16 @@
 
 (cl-defmethod forge--set-topic-assignees ((repo forge-gitea-repository) topic assignees)
   (forge--gtea-patch repo (format "repos/:project/issues/%s" (oref topic number))
-    `((assignees . , assignees))
-      :callback  #'(lambda (value headers status req) (forge-pull))
-      :errorback (forge--post-submit-errorback)))
+    `((assignees . , (or assignees [])))
+    :callback  #'(lambda (value headers status req) (forge--update-issue repo value))
+    :errorback (forge--post-submit-errorback)))
 
 (cl-defmethod forge--set-topic-state ((repo forge-gitea-repository) topic)
   (forge--gtea-patch repo (format "repos/:project/issues/%s" (oref topic number))
     `((state . , (cl-ecase (oref topic state)
                    (closed "reopen")
                    (open   "closed"))))
-      :callback  #'(lambda (value headers status req) (forge-pull))
+      :callback  #'(lambda (value headers status req) (forge--update-issue repo value))
       :errorback (forge--post-submit-errorback)))
 
 ;;; Utilities
