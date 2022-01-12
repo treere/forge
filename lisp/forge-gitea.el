@@ -386,7 +386,14 @@
                                    #'(lambda (l) (cons (cdr (assq 'name l))  (cdr (assq 'id l))))
                                    (cdr fetched-labels)))
                   (labels-id (mapcar #'(lambda (x) (cdr (assoc x alist-id-label))) labels))
-                  (cb (lambda (value headers status req) (forge-pull))))
+                  (cb (lambda (value headers status req)
+                        (forge--set-id-slot
+                         repo
+                         topic
+                         'labels
+                         (mapcar (lambda (x) (alist-get 'name x)) value)))))
+
+                        ;; (forge-pull))))
              (forge--gtea-put
                repo
                (format "repos/:project/issues/%s/labels" (oref topic number))
