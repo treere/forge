@@ -353,6 +353,22 @@
 
 
 ;;; Mutations
+(cl-defmethod forge--submit-create-pullreq ((_ forge-gitea-repository) base-repo)
+    (let-alist (forge--topic-parse-buffer)
+    (pcase-let* ((`(,base-remote . ,base-branch)
+                  (magit-split-branch-name forge--buffer-base-branch))
+                 (`(,head-remote . ,head-branch)
+                  (magit-split-branch-name forge--buffer-head-branch))
+                 (head-repo (forge-get-repository 'stub head-remote)))
+      (forge--gtea-post head-repo "/repos/:project/pulls"
+        `(,@(and (not (equal head-remote base-remote))
+                 `((target_project_id . ,(oref base-repo forge-id))))
+          (base  . ,base-branch)
+          (head  . ,head-branch)
+          (title . , .title)
+          (body  . , .body))
+        :callback  (forge--post-submit-callback)
+        :errorback (forge--post-submit-errorback)))))
 
 (cl-defmethod forge--submit-create-issue ((_ forge-gitea-repository) repo)
   (let-alist (forge--topic-parse-buffer)
